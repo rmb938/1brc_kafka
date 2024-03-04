@@ -7,10 +7,17 @@ All data is generated via the official 1brc scripts found here https://github.co
 
 * Go 1.21+
 * Java to compile and generate 1brc data
-* A Kafka compatible server
+* A Kafka compatible server 
   * [Apache Kafka](https://kafka.apache.org/)
   * [Redpanda](https://redpanda.com/)
   * [Warpstream](https://www.warpstream.com/)
+
+# Local Development
+
+A docker-compose file is available to develop the code locally
+
+1. Clone 1brc `git clone https://github.com/gunnarmorling/1brc.git`
+1. Follow instructions here to generate measruements
 
 # Setup & Testing
 

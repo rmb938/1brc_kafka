@@ -1,0 +1,141 @@
+version: "3"
+
+services:
+  kafka-0:
+    image: docker.io/bitnami/kafka:3.6
+    ports:
+      - "9092"
+      - "16500:16500"
+    environment:
+      # KRaft settings
+      - KAFKA_CFG_NODE_ID=0
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka-0:9093,1@kafka-1:9093,2@kafka-2:9093
+      - KAFKA_KRAFT_CLUSTER_ID=abcdefghijklmnopqrstuv
+      # Listeners
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:16500
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://:9092,EXTERNAL://127.0.0.1:16500
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      # Clustering
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=2
+      # Disable Auto Topics
+      - KAFKA_CFS_AUTO_CREATE_TOPICS_ENABLE=false
+    volumes:
+      - kafka_0_data:/bitnami/kafka
+    healthcheck:
+      test: bash -c "exec 6<> /dev/tcp/127.0.0.1/9092"
+  kafka-1:
+    image: docker.io/bitnami/kafka:3.6
+    ports:
+      - "9092"
+      - "16501:16501"
+    environment:
+      # KRaft settings
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka-0:9093,1@kafka-1:9093,2@kafka-2:9093
+      - KAFKA_KRAFT_CLUSTER_ID=abcdefghijklmnopqrstuv
+      # Listeners
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:16501
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://:9092,EXTERNAL://127.0.0.1:16501
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      # Clustering
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=2
+      # Disable Auto Topics
+      - KAFKA_CFS_AUTO_CREATE_TOPICS_ENABLE=false
+    volumes:
+      - kafka_1_data:/bitnami/kafka
+  kafka-2:
+    image: docker.io/bitnami/kafka:3.6
+    ports:
+      - "9092"
+      - "16502:16502"
+    environment:
+      # KRaft settings
+      - KAFKA_CFG_NODE_ID=2
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka-0:9093,1@kafka-1:9093,2@kafka-2:9093
+      - KAFKA_KRAFT_CLUSTER_ID=abcdefghijklmnopqrstuv
+      # Listeners
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:16502
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://:9092,EXTERNAL://127.0.0.1:16502
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      # Clustering
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=2
+      # Disable Auto Topics
+      - KAFKA_CFS_AUTO_CREATE_TOPICS_ENABLE=false
+    volumes:
+      - kafka_2_data:/bitnami/kafka
+
+  kafka-minion:
+    image: docker.io/redpandadata/kminion:v2.2.6
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+    ports:
+      - "8080"
+    environment:
+      KAFKA_BROKERS: kafka-0:9092
+
+  create-topic:
+    image: docker.io/bitnami/kafka:3.6
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: 
+      - /opt/bitnami/kafka/bin/kafka-topics.sh
+      - --topic
+      - 1brc
+      - --create
+      - --partitions
+      - "100"
+      - --replication-factor
+      - "3"
+      - --config
+      - unclean.leader.election.enable=false
+      - --bootstrap-server 
+      - kafka-0:9092
+
+  prometheus:
+    image: docker.io/prom/prometheus:v2.50.1
+    ports:
+      - "9090:9090"
+    configs:
+      - source: prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+
+configs:
+  prometheus.yml:
+    content: |
+      global:
+        scrape_interval: 10s
+      scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets:
+            - prometheus:9090
+      - job_name: kafka-minion
+        static_configs:
+          - targets:
+            - kafka-minion:8080
+
+volumes:
+  kafka_0_data:
+    driver: local
+  kafka_1_data:
+    driver: local
+  kafka_2_data:
+    driver: local
