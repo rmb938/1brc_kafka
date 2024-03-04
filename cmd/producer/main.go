@@ -5,6 +5,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -19,6 +21,11 @@ func main() {
 
 	kafkaClient, err := kgo.NewClient(
 		kgo.SeedBrokers("localhost:16500"),
+
+		// TODO: we probably need to continue to tweak these to be optimal
+		//	producer still spends a lot of time waiting to produce
+		kgo.MaxBufferedRecords(1_000_000),
+		kgo.ProducerBatchMaxBytes(16_000_000),
 
 		// disable compression so all kafka implementations are equal in compression
 		kgo.ProducerBatchCompression(kgo.NoCompression()),
@@ -65,38 +72,72 @@ func main() {
 		}
 	}()
 
+	chunkCount := runtime.NumCPU()
+	chunkSize := len(measurementsMapped) / chunkCount
+
+	chunks := make([]int, 0, chunkCount)
 	offset := 0
-	for {
-		nlPos := bytes.IndexByte(measurementsMapped[offset:], '\n')
-		var line []byte
-		if nlPos == -1 {
-			line = measurementsMapped[offset:]
-		} else {
-			line = measurementsMapped[offset : offset+nlPos]
-		}
-
-		processLine(line, kafkaClient)
-
-		if nlPos == -1 {
+	for offset < len(measurementsMapped) {
+		offset += chunkSize
+		if offset >= len(measurementsMapped) {
+			chunks = append(chunks, len(measurementsMapped))
 			break
 		}
 
-		offset += nlPos + 1
+		nlOffset := bytes.IndexByte(measurementsMapped[offset:], '\n')
+		if nlOffset == -1 {
+			chunks = append(chunks, len(measurementsMapped))
+			break
+		} else {
+			offset += nlOffset + 1
+			chunks = append(chunks, offset)
+		}
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(chunkCount)
+
+	start := 0
+	for i, chunk := range chunks {
+		go func(data []byte, i int) {
+
+			offset := 0
+			for {
+				nlOffset := bytes.IndexByte(data[offset:], '\n')
+				var line []byte
+				if nlOffset == -1 {
+					line = data[offset:]
+				} else {
+					line = data[offset : offset+nlOffset]
+				}
+
+				processLine(line, kafkaClient)
+
+				if nlOffset == -1 {
+					break
+				}
+				offset += nlOffset + 1
+			}
+
+			wg.Done()
+		}(measurementsMapped[start:chunk], i)
+		start = chunk
+	}
+	wg.Wait()
 
 }
 
 func processLine(line []byte, kafkaClient *kgo.Client) {
-	colonPos := bytes.IndexByte(line, ';')
-	record := kgo.KeySliceRecord(line[:colonPos], line[1+colonPos:])
+	colonOffset := bytes.IndexByte(line, ';')
+	record := kgo.KeySliceRecord(line[:colonOffset], line[1+colonOffset:])
 	record.Topic = "1brc"
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	rs := kafkaClient.ProduceSync(ctx, record)
-	err := rs.FirstErr()
-	if err != nil {
-		slog.Info("error producing record", "error", err)
-		os.Exit(1)
-	}
+	kafkaClient.Produce(ctx, record, func(r *kgo.Record, err error) {
+		defer cancel()
+		if err != nil {
+			slog.Info("error producing record", "error", err)
+			os.Exit(1)
+		}
+	})
 }

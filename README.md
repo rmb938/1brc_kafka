@@ -33,6 +33,6 @@ Prometheus, kminion and node_exporter are also deployed to monitor the Kafka clu
 
 # TODO
 
-- [ ] Producing
+- [X] Producing
 - [ ] Consuming
 - [ ] Computing Average
