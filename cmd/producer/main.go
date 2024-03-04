@@ -75,18 +75,7 @@ func main() {
 			line = measurementsMapped[offset : offset+nlPos]
 		}
 
-		colonPos := bytes.IndexByte(line, ';')
-		record := kgo.KeySliceRecord(line[:colonPos], line[1+colonPos:])
-		record.Topic = "1brc"
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		rs := kafkaClient.ProduceSync(ctx, record)
-		err = rs.FirstErr()
-		if err != nil {
-			slog.Info("error producing record", "error", err)
-			os.Exit(1)
-		}
+		processLine(line, kafkaClient)
 
 		if nlPos == -1 {
 			break
@@ -95,4 +84,19 @@ func main() {
 		offset += nlPos + 1
 	}
 
+}
+
+func processLine(line []byte, kafkaClient *kgo.Client) {
+	colonPos := bytes.IndexByte(line, ';')
+	record := kgo.KeySliceRecord(line[:colonPos], line[1+colonPos:])
+	record.Topic = "1brc"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	rs := kafkaClient.ProduceSync(ctx, record)
+	err := rs.FirstErr()
+	if err != nil {
+		slog.Info("error producing record", "error", err)
+		os.Exit(1)
+	}
 }
