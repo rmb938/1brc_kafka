@@ -18,6 +18,8 @@ A docker-compose file is available to develop the code locally
 
 1. Clone 1brc `git clone https://github.com/gunnarmorling/1brc.git`
 1. Follow instructions here to generate measruements
+1. Run `docker compose up` and wait for kminion container to start
+1. Run `go run cmd/producer/main.go`
 
 # Setup & Testing
 
